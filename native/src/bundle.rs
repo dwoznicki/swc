@@ -1,11 +1,10 @@
 use crate::{
     get_compiler,
-    util::{CtxtExt, MapErr},
+    util::{MapErr},
 };
 use anyhow::{bail, Error};
 use fxhash::FxHashMap;
-use napi::{CallContext, Env, JsObject, JsUnknown, JsString, Status, Task, ValueType};
-use serde::Deserialize;
+use napi::{CallContext, Env, JsObject, Status, Task};
 use spack::resolvers::NodeResolver;
 use std::{
     panic::{catch_unwind, AssertUnwindSafe},
@@ -19,24 +18,8 @@ use swc_ecma_ast::{
     Bool, Expr, ExprOrSuper, Ident, KeyValueProp, Lit, MemberExpr, MetaPropExpr, PropName, Str,
 };
 
-// struct ConfigItem {
-//     loader: Box<dyn Load>,
-//     resolver: Box<dyn Resolve>,
-//     static_items: StaticConfigItem,
-// }
-
-// #[derive(Debug, Deserialize)]
-// #[serde(rename_all = "camelCase")]
-// struct StaticConfigItem {
-//     #[serde(default)]
-//     working_dir: String,
-//     #[serde(flatten)]
-//     config: spack::config::Config,
-// }
-
 struct BundleTask {
     swc: Arc<swc::Compiler>,
-    // config: ConfigItem,
     config: spack::config::Config,
     loader: Box<dyn Load>,
     resolver: Box<dyn Resolve>,
@@ -50,8 +33,6 @@ impl Task for BundleTask {
         // Defaults to es3
         let codegen_target = self
             .config
-            // .static_items
-            // .config
             .codegen_target()
             .unwrap_or_default();
 
@@ -59,8 +40,6 @@ impl Task for BundleTask {
             let bundler = Bundler::new(
                 self.swc.globals(),
                 self.swc.cm.clone(),
-                // &self.config.loader,
-                // &self.config.resolver,
                 &self.loader,
                 &self.resolver,
                 swc_bundler::Config {
@@ -110,7 +89,6 @@ impl Task for BundleTask {
 
             let result = bundler
                 .bundle(self.config.entry.clone().into())
-                // .bundle(self.config.static_items.config.entry.clone().into())
                 .convert_err()?;
 
             let result = result
@@ -126,8 +104,6 @@ impl Task for BundleTask {
                         // TODO: Source map
                         let minify = self
                             .config
-                            // .static_items
-                            // .config
                             .options
                             .as_ref()
                             .map(|v| {
