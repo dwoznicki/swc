@@ -4,7 +4,7 @@ use crate::{
 };
 use anyhow::{bail, Error};
 use fxhash::FxHashMap;
-use napi::{CallContext, Env, JsObject, Status, Task};
+use napi::{CallContext, Env, JsObject, JsUnknown, JsString, Status, Task, ValueType};
 use serde::Deserialize;
 use spack::resolvers::NodeResolver;
 use std::{
@@ -19,24 +19,27 @@ use swc_ecma_ast::{
     Bool, Expr, ExprOrSuper, Ident, KeyValueProp, Lit, MemberExpr, MetaPropExpr, PropName, Str,
 };
 
-struct ConfigItem {
-    loader: Box<dyn Load>,
-    resolver: Box<dyn Resolve>,
-    static_items: StaticConfigItem,
-}
+// struct ConfigItem {
+//     loader: Box<dyn Load>,
+//     resolver: Box<dyn Resolve>,
+//     static_items: StaticConfigItem,
+// }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct StaticConfigItem {
-    #[serde(default)]
-    working_dir: String,
-    #[serde(flatten)]
-    config: spack::config::Config,
-}
+// #[derive(Debug, Deserialize)]
+// #[serde(rename_all = "camelCase")]
+// struct StaticConfigItem {
+//     #[serde(default)]
+//     working_dir: String,
+//     #[serde(flatten)]
+//     config: spack::config::Config,
+// }
 
 struct BundleTask {
     swc: Arc<swc::Compiler>,
-    config: ConfigItem,
+    // config: ConfigItem,
+    config: spack::config::Config,
+    loader: Box<dyn Load>,
+    resolver: Box<dyn Resolve>,
 }
 
 impl Task for BundleTask {
@@ -47,8 +50,8 @@ impl Task for BundleTask {
         // Defaults to es3
         let codegen_target = self
             .config
-            .static_items
-            .config
+            // .static_items
+            // .config
             .codegen_target()
             .unwrap_or_default();
 
@@ -56,8 +59,10 @@ impl Task for BundleTask {
             let bundler = Bundler::new(
                 self.swc.globals(),
                 self.swc.cm.clone(),
-                &self.config.loader,
-                &self.config.resolver,
+                // &self.config.loader,
+                // &self.config.resolver,
+                &self.loader,
+                &self.resolver,
                 swc_bundler::Config {
                     require: true,
                     external_modules: vec![
@@ -104,7 +109,8 @@ impl Task for BundleTask {
             );
 
             let result = bundler
-                .bundle(self.config.static_items.config.entry.clone().into())
+                .bundle(self.config.entry.clone().into())
+                // .bundle(self.config.static_items.config.entry.clone().into())
                 .convert_err()?;
 
             let result = result
@@ -120,8 +126,8 @@ impl Task for BundleTask {
                         // TODO: Source map
                         let minify = self
                             .config
-                            .static_items
-                            .config
+                            // .static_items
+                            // .config
                             .options
                             .as_ref()
                             .map(|v| {
@@ -177,12 +183,23 @@ impl Task for BundleTask {
 pub(crate) fn bundle(cx: CallContext) -> napi::Result<JsObject> {
     let c: Arc<Compiler> = get_compiler(&cx);
 
-    let static_items: StaticConfigItem = cx.get_deserialized(0)?;
+    let jsconf = cx.get::<JsObject>(0)?;
+
+    // Execute plugins, if present.
+    if jsconf.has_named_property("plugins")? {
+        let plugins = jsconf.get_named_property::<napi::JsArrayBuffer>("plugins")?;
+        for i in 0..plugins.get_array_length()? {
+            let func = plugins.get_element::<napi::JsFunction>(i)?;
+            // println!("{:?}", func.coerce_to_string()?.into_utf8()?.as_str()?.to_string());
+            let _ = func.call(None, &[])?;
+        }
+    }
+
+    let config: spack::config::Config = cx.env.from_js_value(jsconf)?;
 
     let loader = Box::new(spack::loaders::swc::SwcLoader::new(
         c.clone(),
-        static_items
-            .config
+        config
             .options
             .as_ref()
             .cloned()
@@ -194,11 +211,9 @@ pub(crate) fn bundle(cx: CallContext) -> napi::Result<JsObject> {
     cx.env
         .spawn(BundleTask {
             swc: c.clone(),
-            config: ConfigItem {
-                loader,
-                resolver: Box::new(NodeResolver::new()) as Box<_>,
-                static_items,
-            },
+            config,
+            loader,
+            resolver: Box::new(NodeResolver::new()) as Box<_>,
         })
         .map(|t| t.promise_object())
 }
@@ -240,3 +255,4 @@ impl swc_bundler::Hook for Hook {
         ])
     }
 }
+

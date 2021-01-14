@@ -201,9 +201,12 @@ export class Compiler {
       return obj;
     }
 
-    return bindings.bundle(toBuffer({
-      ...opts,
-    }));
+    return bindings.bundle({
+        ...opts,
+    });
+    // return bindings.bundle(toBuffer({
+    //   ...opts,
+    // }));
   }
 }
 

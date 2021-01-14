@@ -68,6 +68,8 @@ export interface SpackConfig {
     module: ModuleConfig
 
     options?: Options
+
+    plugins?: Plugin[]
 }
 
 export interface OutputConfig {
@@ -86,3 +88,4 @@ export type EntryConfig = string | string[] | {
     [name: string]: string
 }
 
+export type Plugin = () => void
