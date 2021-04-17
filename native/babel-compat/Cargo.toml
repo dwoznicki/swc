@@ -20,6 +20,7 @@ swc_ecma_ast = {version = "0.43", path = "../../ecmascript/ast"}
 swc_babel_compat_macros = {path = "./macros"}
 swc_visit = {version = "0.2.3", path = "../../visit"}
 swc_babel_ast = {path = "../babel-ast"}
+swc_babel_visit = {path = "../babel-visit"}
 
 [dev-dependencies]
 pretty_assertions = "0.7.1"
